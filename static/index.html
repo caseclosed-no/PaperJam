@@ -31,6 +31,7 @@
           <label>Target sets<input id="target-games" type="number" min="1" max="500" value="1"></label>
           <label>Print profile override<select id="production-profile"><option value="">Use page settings</option></select></label>
           <label class="radio"><input id="group-profiles" type="checkbox"><span><strong>Group by print profile</strong><small>One job per profile across all target sets. Sort the output into sets afterward.</small></span></label>
+          <div id="production-replacements" class="profile-replacements"></div>
           <fieldset><legend>Inventory</legend>
             <label class="radio"><input type="radio" name="stock-mode" value="use_inventory" checked><span><strong>Use available stock</strong><small>Existing elements satisfy the earliest sets.</small></span></label>
             <label class="radio"><input type="radio" name="stock-mode" value="ignore_inventory"><span><strong>Print everything</strong><small>Ignore stock and do not change it.</small></span></label>
@@ -68,6 +69,7 @@
     <div class="preview-settings">
       <label>Print profile override<select id="preview-profile"></select></label>
       <label class="radio"><input id="preview-group" type="checkbox"><span>Group by print profile</span></label>
+      <div id="preview-replacements" class="profile-replacements"></div>
       <p class="settings-note">An override replaces the full profile, including paper and borderless settings, for this run only.</p>
     </div>
     <div id="preview-content"></div>

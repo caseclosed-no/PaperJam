@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::{Context, bail};
 use chrono::Utc;
@@ -94,6 +94,7 @@ pub fn production_plan(
         ),
         request.group_by_profile,
         request.profile_override.clone(),
+        request.profile_replacements.clone(),
     ))
 }
 
@@ -151,20 +152,32 @@ pub fn manual_plan(
         ),
         request.group_by_profile,
         request.profile_override.clone(),
+        request.profile_replacements.clone(),
     ))
 }
 
-fn with_print_settings(mut plan: PrintPlan, group: bool, profile: Option<String>) -> PrintPlan {
+fn with_print_settings(
+    mut plan: PrintPlan,
+    group: bool,
+    profile: Option<String>,
+    replacements: BTreeMap<String, String>,
+) -> PrintPlan {
     plan.group_by_profile = group;
     plan.profile_override = profile.clone();
-    if let Some(profile) = profile {
-        for item in &mut plan.items {
-            item.profile = profile.clone();
-        }
-        for requirement in &mut plan.requirements {
-            requirement.profile = profile.clone();
-        }
+    let replace = |original: &str| {
+        profile
+            .as_ref()
+            .or_else(|| replacements.get(original))
+            .cloned()
+            .unwrap_or_else(|| original.to_owned())
+    };
+    for item in &mut plan.items {
+        item.profile = replace(&item.profile);
     }
+    for requirement in &mut plan.requirements {
+        requirement.profile = replace(&requirement.profile);
+    }
+    plan.profile_replacements = replacements;
     plan
 }
 
@@ -264,6 +277,7 @@ fn base_plan(
         items: contents.items,
         group_by_profile: false,
         profile_override: None,
+        profile_replacements: BTreeMap::new(),
     }
 }
 
@@ -323,6 +337,7 @@ mod tests {
             inventory_mode: InventoryMode::UseInventory,
             group_by_profile: false,
             profile_override: None,
+            profile_replacements: BTreeMap::new(),
         };
         let plan = production_plan(&game, &doc, &inv, &req).unwrap();
         assert_eq!(
@@ -351,6 +366,7 @@ mod tests {
             inventory_mode: InventoryMode::IgnoreInventory,
             group_by_profile: false,
             profile_override: None,
+            profile_replacements: BTreeMap::new(),
         };
         let plan = production_plan(&game, &doc, &InventoryFile::default(), &req).unwrap();
         assert_eq!(
@@ -376,6 +392,7 @@ mod tests {
             inventory_mode: InventoryMode::IgnoreInventory,
             group_by_profile: false,
             profile_override: None,
+            profile_replacements: BTreeMap::new(),
         };
         let plan = production_plan(&game, &doc, &inventory, &request).unwrap();
         assert_eq!(plan.items.len(), 4);

@@ -85,6 +85,8 @@ Enable **Group by print profile** to submit one CUPS job per profile within the 
 
 Use **Print profile override** to apply a configured profile to the whole batch. Individual **Print** buttons also open a preview with this override. It replaces the full profile—including paper and borderless settings—for that run only; TOML assignments stay unchanged. The preview can toggle grouping and overrides before submission.
 
+Use **Replace individual profiles** beside the grouping controls to map one profile to another for a run. For example, replacing Plain Standard with Plain Borderless Standard lets consecutive pages using either profile merge into one job. The preview offers the same controls and recalculates the job count immediately. Replacements match original page profiles once (they do not chain); the whole-run override takes priority. Changing the project or PDF clears the production replacements, and **Reset** clears them in one click. Saved TOML assignments are unchanged.
+
 ## Mixed portrait and landscape pages
 
 Paperjam explicitly enables CUPS `pdfAutorotate=true` so landscape PDF pages rotate to fit the selected paper orientation instead of being cropped by a portrait request. This applies to individual pages and grouped jobs; the source PDFs are unchanged. A profile can set `pdfAutorotate = "false"` if fixed orientation is intentional.

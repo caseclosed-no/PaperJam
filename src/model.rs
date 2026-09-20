@@ -138,6 +138,8 @@ pub struct ProductionPlanRequest {
     pub group_by_profile: bool,
     #[serde(default)]
     pub profile_override: Option<String>,
+    #[serde(default)]
+    pub profile_replacements: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,6 +151,8 @@ pub struct ManualPlanRequest {
     pub group_by_profile: bool,
     #[serde(default)]
     pub profile_override: Option<String>,
+    #[serde(default)]
+    pub profile_replacements: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -184,6 +188,8 @@ pub struct PrintPlan {
     pub group_by_profile: bool,
     #[serde(default)]
     pub profile_override: Option<String>,
+    #[serde(default)]
+    pub profile_replacements: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

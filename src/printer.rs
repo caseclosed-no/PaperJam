@@ -79,6 +79,17 @@ pub fn compile_jobs(
             id
         );
     }
+    for id in plan
+        .profile_replacements
+        .keys()
+        .chain(plan.profile_replacements.values())
+    {
+        anyhow::ensure!(
+            printer.profiles.contains_key(id),
+            "unknown profile '{}'",
+            id
+        );
+    }
     let mut jobs: Vec<PrintJob> = Vec::new();
     for item in &plan.items {
         let profile = printer
@@ -551,6 +562,101 @@ mod tests {
                 .contains("unknown profile")
         );
     }
+    #[test]
+    fn replacements_merge_adjacent_pages_and_group_all_sets() {
+        use crate::{model::InventoryFile, planner};
+        let mut f = fixture(1);
+        let template = f.game.documents[0].elements[0].clone();
+        f.game.documents[0].elements = (1..=6)
+            .map(|page| {
+                let mut element = template.clone();
+                element.id = format!("page-{page}");
+                element.name = element.id.clone();
+                element.page = page;
+                element.profile = (page == 4).then(|| "high".into());
+                element
+            })
+            .collect();
+        f.printer
+            .profiles
+            .get_mut("high")
+            .unwrap()
+            .options
+            .insert("PageSize".into(), "TA4".into());
+        let doc = &f.game.documents[0];
+        let mut req = production_request();
+        req.selected_element_ids = doc.elements.iter().map(|e| e.id.clone()).collect();
+        req.target_games = 1;
+        req.group_by_profile = false;
+        let inv = InventoryFile::default();
+        let original = planner::production_plan(&f.game, doc, &inv, &req).unwrap();
+        assert_eq!(
+            compile_jobs(doc, &original, &f.printer, &f.root)
+                .unwrap()
+                .len(),
+            3
+        );
+        req.profile_replacements
+            .insert("standard".into(), "high".into());
+        let plan = planner::production_plan(&f.game, doc, &inv, &req).unwrap();
+        let jobs = compile_jobs(doc, &plan, &f.printer, &f.root).unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].page_range(), "1-6");
+        assert_eq!(jobs[0].options["PageSize"], "TA4");
+        assert!(plan.requirements.iter().all(|r| r.profile == "high"));
+        assert!(doc.elements[0].profile.is_none());
+        req.group_by_profile = true;
+        req.target_games = 3;
+        let plan = planner::production_plan(&f.game, doc, &inv, &req).unwrap();
+        let jobs = compile_jobs(doc, &plan, &f.printer, &f.root).unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(
+            jobs[0].source_pages,
+            (0..3).flat_map(|_| 1..=6).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn replacements_are_single_pass_with_global_precedence_and_validation() {
+        use crate::{model::*, planner};
+        let f = fixture(1);
+        let doc = &f.game.documents[0];
+        let mut req: ManualPlanRequest = serde_json::from_value(serde_json::json!({
+            "game_id":"test", "document_id":"pages", "group_by_profile":true,
+            "profile_replacements":{"standard":"high", "high":"standard"},
+            "selections":[{"element_id":"one","quantity":2},{"element_id":"three","quantity":1}]
+        }))
+        .unwrap();
+        let inv = InventoryFile::default();
+        let plan = planner::manual_plan(&f.game, doc, &inv, &req).unwrap();
+        assert_eq!(plan.requirements[0].profile, "high");
+        assert_eq!(plan.requirements[1].profile, "standard");
+        let jobs = compile_jobs(doc, &plan, &f.printer, &f.root).unwrap();
+        assert_eq!(jobs[0].source_pages, vec![1, 1]);
+        assert_eq!(jobs[1].profile_id, "standard");
+        req.profile_override = Some("standard".into());
+        let plan = planner::manual_plan(&f.game, doc, &inv, &req).unwrap();
+        assert!(plan.requirements.iter().all(|r| r.profile == "standard"));
+        assert_eq!(
+            compile_jobs(doc, &plan, &f.printer, &f.root).unwrap().len(),
+            1
+        );
+        for replacements in [
+            BTreeMap::from([("missing".into(), "high".into())]),
+            BTreeMap::from([("standard".into(), "missing".into())]),
+        ] {
+            let mut invalid = plan.clone();
+            invalid.items.clear();
+            invalid.profile_replacements = replacements;
+            assert!(
+                compile_jobs(doc, &invalid, &f.printer, &f.root)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("unknown profile")
+            );
+        }
+    }
+
     #[test]
     fn grouping_keeps_nup_sheet_counts_and_surplus() {
         use crate::{model::InventoryFile, planner};
