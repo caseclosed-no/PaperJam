@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Paperjam - Production Automation</title>
+  <meta name="description" content="Paperjam is a self-hosted PDF print production utility with reusable printer profiles, batch planning, and spare inventory. Proudly used by Caseclosed Norway and Caseclosed Mysteries internationally.">
+  <link rel="icon" type="image/svg+xml" href="/paperjam-mark.svg">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#production"><img class="brand-logo" src="/paperjam-mark.svg" width="40" height="40" alt=""><span>Paperjam</span></a>
+    <nav aria-label="Main navigation">
+      <button data-view="production" class="nav-active">Production</button>
+      <button data-view="inventory">Inventory</button>
+      <button data-view="runs">Print runs <span id="active-count" class="badge" hidden></span></button>
+    </nav>
+    <div id="printer-pill" class="status-pill">Checking printer…</div>
+  </header>
+
+  <main>
+    <div id="warnings"></div>
+
+    <section id="production" class="view active">
+      <div class="page-heading"><div><p class="eyebrow">Build a batch</p><h1>Production</h1><p>Select a project and one physical PDF stack.</p></div></div>
+      <div class="workflow-grid">
+        <aside class="panel controls">
+          <label>Project<select id="game-select"></select></label>
+          <label>PDF / paper stack<select id="document-select"></select></label>
+          <label>Target sets<input id="target-games" type="number" min="1" max="500" value="1"></label>
+          <label>Print profile override<select id="production-profile"><option value="">Use page settings</option></select></label>
+          <label class="radio"><input id="group-profiles" type="checkbox"><span><strong>Group by print profile</strong><small>One job per profile across all target sets. Sort the output into sets afterward.</small></span></label>
+          <fieldset><legend>Inventory</legend>
+            <label class="radio"><input type="radio" name="stock-mode" value="use_inventory" checked><span><strong>Use available stock</strong><small>Existing elements satisfy the earliest sets.</small></span></label>
+            <label class="radio"><input type="radio" name="stock-mode" value="ignore_inventory"><span><strong>Print everything</strong><small>Ignore stock and do not change it.</small></span></label>
+          </fieldset>
+          <button id="preview-production" class="primary wide">Preview print plan</button>
+        </aside>
+        <div class="panel table-panel">
+          <div class="table-tools"><label class="check-all"><input id="select-all" type="checkbox" checked> Select everything</label><span id="selection-count"></span></div>
+          <div id="element-table"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="inventory" class="view">
+      <div class="page-heading"><div><p class="eyebrow">Physical spares</p><h1>Inventory</h1><p>Counts are finished individual elements, including items printed N-up.</p></div><button id="save-inventory" class="primary">Save inventory</button></div>
+      <div class="workflow-grid">
+        <aside class="panel controls">
+          <label>Project<select id="inventory-game"></select></label>
+          <label>PDF / paper stack<select id="inventory-document"></select></label>
+          <p class="settings-note">Count finished individual elements, not sheets. Changes are kept when you switch projects or stacks.</p>
+          <p id="inventory-status" role="status"></p>
+        </aside>
+        <div class="panel table-panel"><div id="inventory-content"></div></div>
+      </div>
+    </section>
+
+    <section id="runs" class="view">
+      <div class="page-heading"><div><p class="eyebrow">Printer queue</p><h1>Print runs</h1><p>Runs continue in the background if this page is closed.</p></div><button id="refresh-runs" class="secondary">Refresh</button></div>
+      <div id="runs-content" class="run-list"></div>
+    </section>
+  </main>
+
+  <dialog id="preview-dialog">
+    <div class="dialog-head"><div><p class="eyebrow">Review before printing</p><h2 id="preview-title">Print plan</h2></div><button class="icon-button" data-close aria-label="Close">×</button></div>
+    <div class="preview-settings">
+      <label>Print profile override<select id="preview-profile"></select></label>
+      <label class="radio"><input id="preview-group" type="checkbox"><span>Group by print profile</span></label>
+      <p class="settings-note">An override replaces the full profile, including paper and borderless settings, for this run only.</p>
+    </div>
+    <div id="preview-content"></div>
+    <div class="dialog-actions"><button class="secondary" data-close>Go back</button><button id="start-run" class="primary">Start print run</button></div>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+/target
+/data/*
+!/data/README.md
+/.idea/
+
+# Download Epson packages from Epson; do not redistribute them here.
+/*.deb

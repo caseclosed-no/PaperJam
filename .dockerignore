@@ -1,0 +1,7 @@
+/target
+/.git
+/.idea
+/data
+
+# Download Epson packages from Epson; do not redistribute them here.
+/*.deb
