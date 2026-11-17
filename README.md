@@ -87,6 +87,12 @@ Use **Print profile override** to apply a configured profile to the whole batch.
 
 Use **Replace individual profiles** beside the grouping controls to map one profile to another for a run. For example, replacing Plain Standard with Plain Borderless Standard lets consecutive pages using either profile merge into one job. The preview offers the same controls and recalculates the job count immediately. Replacements match original page profiles once (they do not chain); the whole-run override takes priority. Changing the project or PDF clears the production replacements, and **Reset** clears them in one click. Saved TOML assignments are unchanged.
 
+## Recovering a stalled print run
+
+In **Print runs**, use **Clear stall and retry** on a running job. Paperjam cancels that run's current CUPS job, resubmits the same batch with its original pages, copies, and print settings, then continues the remaining work. Completed batches and other queued runs are kept; inventory is not consumed again. The confirmation explains that any pages already printed from the current batch may print again. If cancellation fails, the run fails visibly without submitting a duplicate. This does not restart CUPS or clear unrelated printer jobs.
+
+Recovery checks: run `cargo test --locked`, then `cargo build --locked && python3 tests/stall_recovery.py`. The end-to-end check uses an isolated temporary app and fake CUPS commands; it does not contact a printer.
+
 ## Mixed portrait and landscape pages
 
 Paperjam explicitly enables CUPS `pdfAutorotate=true` so landscape PDF pages rotate to fit the selected paper orientation instead of being cropped by a portrait request. This applies to individual pages and grouped jobs; the source PDFs are unchanged. A profile can set `pdfAutorotate = "false"` if fixed orientation is intentional.

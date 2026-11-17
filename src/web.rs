@@ -144,6 +144,17 @@ pub async fn cancel_run(
 ) -> Result<Json<PrintRun>, ApiError> {
     Ok(Json(s.cancel_run(id).await.map_err(ApiError::bad)?))
 }
+pub async fn recover_run(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<RecoverRunRequest>,
+) -> Result<Json<PrintRun>, ApiError> {
+    Ok(Json(
+        s.recover_run(id, &req.cups_request_id)
+            .await
+            .map_err(ApiError::bad)?,
+    ))
+}
 pub async fn restore_stock(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,

@@ -264,19 +264,31 @@ pub async fn submit(job: &PrintJob, config: &PrinterConfig) -> anyhow::Result<Op
     Ok(Some(parse_request_id(&stdout, &job.destination)?))
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum WaitOutcome {
+    Completed,
+    Retry,
+}
+
 pub async fn wait_until_complete(
     request_id: &str,
     config: &PrinterConfig,
     canceled: impl Fn() -> bool,
-) -> anyhow::Result<()> {
-    if config.backend == "dry-run" {
-        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
-        return Ok(());
-    }
+    recover: impl Fn() -> bool,
+) -> anyhow::Result<WaitOutcome> {
     loop {
         if canceled() {
             cancel(request_id, config).await?;
             anyhow::bail!("canceled");
+        }
+        if recover() {
+            // Never resubmit unless cancellation succeeded.
+            cancel(request_id, config).await?;
+            return Ok(WaitOutcome::Retry);
+        }
+        if config.backend == "dry-run" {
+            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+            return Ok(WaitOutcome::Completed);
         }
         let mut command = Command::new("lpstat");
         if let Some(server) = &config.server {
@@ -294,7 +306,7 @@ pub async fn wait_until_complete(
             );
         }
         if !String::from_utf8_lossy(&output.stdout).contains(request_id) {
-            return Ok(());
+            return Ok(WaitOutcome::Completed);
         }
         tokio::time::sleep(std::time::Duration::from_millis(config.poll_interval_ms)).await;
     }
@@ -358,6 +370,28 @@ fn parse_request_id(stdout: &str, destination: &str) -> anyhow::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn recovery_retries_and_cancel_takes_priority() {
+        let f = fixture(1);
+        assert_eq!(
+            wait_until_complete("test-1", &f.printer, || false, || true)
+                .await
+                .unwrap(),
+            WaitOutcome::Retry
+        );
+        assert!(
+            wait_until_complete("test-1", &f.printer, || true, || panic!("cancel must win"))
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            wait_until_complete("test-1", &f.printer, || false, || false)
+                .await
+                .unwrap(),
+            WaitOutcome::Completed
+        );
+    }
+
     #[test]
     fn parses_hyphenated_destination() {
         assert_eq!(

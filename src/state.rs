@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     sync::{
@@ -26,6 +26,7 @@ pub struct AppState {
     pub plans: Arc<RwLock<HashMap<Uuid, PrintPlan>>>,
     pub runs: Arc<RwLock<BTreeMap<Uuid, PrintRun>>>,
     cancel_flags: Arc<Mutex<HashMap<Uuid, Arc<AtomicBool>>>>,
+    recovery_requests: Arc<Mutex<HashSet<String>>>,
     printer_lock: Arc<AsyncMutex<()>>,
 }
 
@@ -61,6 +62,7 @@ impl AppState {
             plans: Arc::new(RwLock::new(HashMap::new())),
             runs: Arc::new(RwLock::new(runs)),
             cancel_flags: Arc::new(Mutex::new(HashMap::new())),
+            recovery_requests: Arc::new(Mutex::new(HashSet::new())),
             printer_lock: Arc::new(AsyncMutex::new(())),
         })
     }
@@ -156,7 +158,8 @@ impl AppState {
                 .map(|r| r.jobs.len())
                 .unwrap_or(0)
         };
-        for index in 0..count {
+        let mut index = 0;
+        while index < count {
             if cancel.load(Ordering::Relaxed) {
                 self.finish_canceled(run_id).await;
                 return;
@@ -180,17 +183,33 @@ impl AppState {
                     })
                     .await;
                     let shown = request_id.unwrap_or_else(|| format!("dry-run-{index}"));
-                    if let Err(error) = printer::wait_until_complete(&shown, &self.printer, || {
-                        cancel.load(Ordering::Relaxed)
-                    })
-                    .await
-                    {
-                        if cancel.load(Ordering::Relaxed) {
-                            self.finish_canceled(run_id).await;
-                        } else {
-                            self.fail_run(run_id, index, error.to_string()).await;
+                    let outcome = printer::wait_until_complete(
+                        &shown,
+                        &self.printer,
+                        || cancel.load(Ordering::Relaxed),
+                        || self.recovery_requests.lock().unwrap().remove(&shown),
+                    )
+                    .await;
+                    // A recovery request targets this exact submission, never the next job.
+                    self.recovery_requests.lock().unwrap().remove(&shown);
+                    match outcome {
+                        Ok(printer::WaitOutcome::Retry) => {
+                            self.mutate_run(run_id, |r| {
+                                r.jobs[index].status = JobStatus::Pending;
+                                r.jobs[index].cups_request_id = None;
+                            })
+                            .await;
+                            continue;
                         }
-                        return;
+                        Ok(printer::WaitOutcome::Completed) => {}
+                        Err(error) => {
+                            if cancel.load(Ordering::Relaxed) {
+                                self.finish_canceled(run_id).await;
+                            } else {
+                                self.fail_run(run_id, index, error.to_string()).await;
+                            }
+                            return;
+                        }
                     }
                     self.mutate_run(run_id, |r| r.jobs[index].status = JobStatus::Completed)
                         .await;
@@ -200,6 +219,7 @@ impl AppState {
                     return;
                 }
             }
+            index += 1;
         }
         self.mutate_run(run_id, |r| {
             r.status = RunStatus::Completed;
@@ -263,6 +283,30 @@ impl AppState {
             .cloned()
             .context("unknown run")
     }
+    pub async fn recover_run(&self, id: Uuid, request_id: &str) -> anyhow::Result<PrintRun> {
+        let runs = self.runs.read().await;
+        let run = runs.get(&id).context("unknown run")?;
+        anyhow::ensure!(run.status == RunStatus::Running, "run is not running");
+        let job = run
+            .current_job
+            .and_then(|i| run.jobs.get(i))
+            .context("run has no current job")?;
+        anyhow::ensure!(job.status == JobStatus::Submitted, "job is not submitted");
+        let request = job
+            .cups_request_id
+            .as_ref()
+            .context("job has no CUPS request")?;
+        anyhow::ensure!(
+            request == request_id,
+            "current printer job changed; refresh before retrying"
+        );
+        self.recovery_requests
+            .lock()
+            .unwrap()
+            .insert(request.clone());
+        Ok(run.clone())
+    }
+
     pub async fn restore_stock(&self, id: Uuid) -> anyhow::Result<PrintRun> {
         let (game_id, consumed, already) = {
             let runs = self.runs.read().await;
@@ -316,4 +360,79 @@ fn save_run_to(state: &Path, run: &PrintRun) -> anyhow::Result<()> {
     let path = dir.join(format!("{}.json", run.id));
     fs::write(&path, serde_json::to_vec_pretty(run)?)
         .with_context(|| format!("writing {}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn recovery_targets_only_current_submission_without_changing_inventory() {
+        let root = std::env::temp_dir().join(format!("paperjam-recovery-{}", Uuid::new_v4()));
+        let printer = serde_json::from_value(serde_json::json!({
+            "destination": "test", "profiles": {}
+        }))
+        .unwrap();
+        let state = AppState::new(vec![], printer, root.clone(), root.clone(), vec![]).unwrap();
+        let id = Uuid::new_v4();
+        let job: printer::PrintJob = serde_json::from_value(serde_json::json!({
+            "destination": "test", "server": null, "file": "example.pdf", "title": "Batch",
+            "page_start": 15, "page_end": 16, "copies": 2, "profile_id": "high",
+            "options": {}, "set": 1, "elements": []
+        }))
+        .unwrap();
+        let run = PrintRun {
+            id,
+            plan_id: Uuid::new_v4(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            game_id: "example".into(),
+            game_name: "Example".into(),
+            document_name: "White".into(),
+            status: RunStatus::Running,
+            current_job: Some(1),
+            jobs: vec![
+                RunJob {
+                    job: job.clone(),
+                    status: JobStatus::Completed,
+                    cups_request_id: Some("test-1".into()),
+                    error: None,
+                },
+                RunJob {
+                    job: job.clone(),
+                    status: JobStatus::Submitted,
+                    cups_request_id: Some("test-2".into()),
+                    error: None,
+                },
+                RunJob {
+                    job,
+                    status: JobStatus::Pending,
+                    cups_request_id: None,
+                    error: None,
+                },
+            ],
+            consumed_inventory: HashMap::from([("element".into(), 2)]),
+            inventory_restored: false,
+            error: None,
+        };
+        state.runs.write().await.insert(id, run.clone());
+        assert!(state.recover_run(id, "test-1").await.is_err());
+        state.recover_run(id, "test-2").await.unwrap();
+        state.recover_run(id, "test-2").await.unwrap(); // Duplicate clicks coalesce.
+        assert_eq!(
+            *state.recovery_requests.lock().unwrap(),
+            HashSet::from(["test-2".into()])
+        );
+        let after = state.runs.read().await[&id].clone();
+        assert_eq!(
+            serde_json::to_value(&after).unwrap(),
+            serde_json::to_value(&run).unwrap()
+        );
+        state.runs.write().await.get_mut(&id).unwrap().status = RunStatus::CancelRequested;
+        assert!(state.recover_run(id, "test-2").await.is_err());
+        state.runs.write().await.get_mut(&id).unwrap().status = RunStatus::Completed;
+        assert!(state.recover_run(id, "test-2").await.is_err());
+        assert!(state.recover_run(Uuid::new_v4(), "test-2").await.is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
 }

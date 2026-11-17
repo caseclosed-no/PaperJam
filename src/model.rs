@@ -302,3 +302,8 @@ pub struct PrintRun {
     #[serde(default)]
     pub error: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct RecoverRunRequest {
+    pub cups_request_id: String,
+}

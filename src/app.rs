@@ -22,6 +22,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/runs", get(web::list_runs).post(web::start_run))
         .route("/api/runs/{id}", get(web::get_run))
         .route("/api/runs/{id}/cancel", post(web::cancel_run))
+        .route("/api/runs/{id}/recover", post(web::recover_run))
         .route("/api/runs/{id}/restore-stock", post(web::restore_stock))
         .route("/api/printer/status", get(web::printer_status))
         .with_state(state)
