@@ -30,7 +30,8 @@
           <label>PDF / paper stack<select id="document-select"></select></label>
           <label>Target sets<input id="target-games" type="number" min="1" max="500" value="1"></label>
           <label>Print profile override<select id="production-profile"><option value="">Use page settings</option></select></label>
-          <label class="radio"><input id="group-profiles" type="checkbox"><span><strong>Group by print profile</strong><small>One job per profile across all target sets. Sort the output into sets afterward.</small></span></label>
+          <label>Group printer jobs<select id="group-mode"><option value="none">No grouping (page order)</option><option value="profile">By print profile</option><option value="episode_profile">By print profile, per episode</option></select></label>
+          <label class="radio"><input id="group-per-set" type="checkbox" disabled><span><strong>Separately for each game</strong><small>Each target set gets its own jobs, so the output comes out sorted. Off: one job covers all sets; sort afterward.</small></span></label>
           <div id="production-replacements" class="profile-replacements"></div>
           <fieldset><legend>Inventory</legend>
             <label class="radio"><input type="radio" name="stock-mode" value="use_inventory" checked><span><strong>Use available stock</strong><small>Existing elements satisfy the earliest sets.</small></span></label>
@@ -68,7 +69,8 @@
     <div class="dialog-head"><div><p class="eyebrow">Review before printing</p><h2 id="preview-title">Print plan</h2></div><button class="icon-button" data-close aria-label="Close">×</button></div>
     <div class="preview-settings">
       <label>Print profile override<select id="preview-profile"></select></label>
-      <label class="radio"><input id="preview-group" type="checkbox"><span>Group by print profile</span></label>
+      <label class="stacked">Group printer jobs<select id="preview-group-mode"><option value="none">No grouping (page order)</option><option value="profile">By print profile</option><option value="episode_profile">By print profile, per episode</option></select></label>
+      <label class="radio"><input id="preview-group-per-set" type="checkbox"><span>Separately for each game</span></label>
       <div id="preview-replacements" class="profile-replacements"></div>
       <p class="settings-note">An override replaces the full profile, including paper and borderless settings, for this run only.</p>
     </div>

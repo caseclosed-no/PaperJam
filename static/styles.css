@@ -4,7 +4,8 @@
 
 .episode-head{gap:10px;flex-wrap:wrap}.episode-head>.result-actions{flex-wrap:wrap}
 
-.preview-settings{padding:16px 24px 0;display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px}.preview-settings>label:first-child{display:grid;gap:5px;font-size:12px;font-weight:600}.preview-settings select{padding:8px;border:1px solid var(--line);border-radius:7px;max-width:100%}.settings-note{flex-basis:100%;margin:0;color:var(--muted);font-size:12px}.primary:disabled{opacity:.5;cursor:wait}
+.preview-settings{padding:16px 24px 0;display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px}.preview-settings>label:first-child{display:grid;gap:5px;font-size:12px;font-weight:600}.preview-settings select{padding:8px;border:1px solid var(--line);border-radius:7px;max-width:100%}.preview-settings>label.stacked{display:grid;gap:5px;font-size:12px;font-weight:600}
+.settings-note{flex-basis:100%;margin:0;color:var(--muted);font-size:12px}.primary:disabled{opacity:.5;cursor:wait}
 
 .inventory-count{width:85px;max-width:100%;padding:8px;border:1px solid #cbd5cf;border-radius:7px;font:inherit}.inventory-count:invalid{border-color:var(--red)}.inventory-empty{padding:18px}#inventory-status{font-size:12px;color:var(--green)}.inventory-table td:last-child{width:110px}@media(max-width:520px){.inventory-table th:nth-child(3),.inventory-table td:nth-child(3){display:table-cell}.inventory-table .element-id{display:block}}
 

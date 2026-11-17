@@ -55,7 +55,7 @@ pub fn production_plan(
                     *stock -= 1;
                     ElementSource::Inventory
                 } else {
-                    items.push(plan_item(document, element, Some(number), 1));
+                    items.push(plan_item(game, document, element, Some(number), 1));
                     ElementSource::Print
                 };
                 set_elements.push(SetElement {
@@ -73,7 +73,7 @@ pub fn production_plan(
     } else {
         for (element, req) in selected.iter().zip(&requirements) {
             if req.sheets > 0 {
-                items.push(plan_item(document, element, None, req.sheets));
+                items.push(plan_item(game, document, element, None, req.sheets));
             }
         }
     }
@@ -92,7 +92,11 @@ pub fn production_plan(
                 items,
             },
         ),
-        request.group_by_profile,
+        Grouping {
+            by_profile: request.group_by_profile,
+            by_episode: request.group_by_episode,
+            per_set: request.group_per_set,
+        },
         request.profile_override.clone(),
         request.profile_replacements.clone(),
     ))
@@ -134,7 +138,7 @@ pub fn manual_plan(
             0,
             sheets,
         ));
-        items.push(plan_item(document, element, None, sheets));
+        items.push(plan_item(game, document, element, None, sheets));
     }
     Ok(with_print_settings(
         base_plan(
@@ -150,19 +154,31 @@ pub fn manual_plan(
                 items,
             },
         ),
-        request.group_by_profile,
+        Grouping {
+            by_profile: request.group_by_profile,
+            by_episode: request.group_by_episode,
+            per_set: request.group_per_set,
+        },
         request.profile_override.clone(),
         request.profile_replacements.clone(),
     ))
 }
 
+struct Grouping {
+    by_profile: bool,
+    by_episode: bool,
+    per_set: bool,
+}
+
 fn with_print_settings(
     mut plan: PrintPlan,
-    group: bool,
+    group: Grouping,
     profile: Option<String>,
     replacements: BTreeMap<String, String>,
 ) -> PrintPlan {
-    plan.group_by_profile = group;
+    plan.group_by_profile = group.by_profile;
+    plan.group_by_episode = group.by_profile && group.by_episode;
+    plan.group_per_set = group.by_profile && group.per_set;
     plan.profile_override = profile.clone();
     let replace = |original: &str| {
         profile
@@ -216,11 +232,27 @@ fn profile(document: &Document, element: &Element) -> String {
         .clone()
         .unwrap_or_else(|| document.default_profile.clone())
 }
-fn plan_item(document: &Document, element: &Element, set: Option<u32>, quantity: u32) -> PlanItem {
+fn plan_item(
+    game: &Game,
+    document: &Document,
+    element: &Element,
+    set: Option<u32>,
+    quantity: u32,
+) -> PlanItem {
+    let episode_index = game
+        .episodes
+        .iter()
+        .position(|e| e.id == element.episode)
+        .unwrap_or(game.episodes.len());
     PlanItem {
         set,
         element_id: element.id.clone(),
         element_name: element.name.clone(),
+        episode_name: game
+            .episodes
+            .get(episode_index)
+            .map_or_else(|| element.episode.clone(), |e| e.name.clone()),
+        episode_index,
         page: element.page,
         profile: profile(document, element),
         quantity,
@@ -276,6 +308,8 @@ fn base_plan(
         sets: contents.sets,
         items: contents.items,
         group_by_profile: false,
+        group_by_episode: false,
+        group_per_set: false,
         profile_override: None,
         profile_replacements: BTreeMap::new(),
     }
@@ -336,6 +370,8 @@ mod tests {
             selected_element_ids: vec!["one".into(), "two".into()],
             inventory_mode: InventoryMode::UseInventory,
             group_by_profile: false,
+            group_by_episode: false,
+            group_per_set: false,
             profile_override: None,
             profile_replacements: BTreeMap::new(),
         };
@@ -365,6 +401,8 @@ mod tests {
             selected_element_ids: vec!["one".into()],
             inventory_mode: InventoryMode::IgnoreInventory,
             group_by_profile: false,
+            group_by_episode: false,
+            group_per_set: false,
             profile_override: None,
             profile_replacements: BTreeMap::new(),
         };
@@ -391,6 +429,8 @@ mod tests {
             selected_element_ids: vec!["one".into(), "two".into()],
             inventory_mode: InventoryMode::IgnoreInventory,
             group_by_profile: false,
+            group_by_episode: false,
+            group_per_set: false,
             profile_override: None,
             profile_replacements: BTreeMap::new(),
         };

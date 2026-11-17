@@ -81,7 +81,13 @@ Starting the app does not print anything. **Start print run** submits the review
 
 ## Grouping and one-run overrides
 
-Enable **Group by print profile** to submit one CUPS job per profile within the selected PDF stack. Nonconsecutive pages and different required quantities are included exactly; existing inventory and N-up yield still determine how many sheets are needed. Grouping spans the entire run, not each set separately: three sets produce all three sets’ pages for the first profile in one job, followed by all three sets’ pages for the next profile. Profiles run in order of first appearance in the plan. Grouping changes output order, so sort the printed pages into sets using the preview's packing guide.
+Use **Group printer jobs** to submit one CUPS job per print profile instead of page by page. Nonconsecutive pages and different required quantities are included exactly; existing inventory and N-up yield still determine how many sheets are needed.
+
+- **By print profile** groups the whole selected PDF stack: three sets produce all three sets’ pages for the first profile in one job, followed by the next profile.
+- **By print profile, per episode** groups each episode separately, in the game’s episode order. Within an episode the profile of its first page (normally the intro letter) prints first.
+- **Separately for each game** splits every group per target set, so the output comes out already in set order. With per-episode grouping the order is episode, then set, then profile: all Episode 1 envelopes, set by set, then Episode 2. This means many more, smaller jobs. It has no effect on N-up documents or manual prints, which have no sets.
+
+Within a group, profiles run in order of first appearance. Without **Separately for each game**, grouped output must be sorted into sets using the preview's packing guide.
 
 Use **Print profile override** to apply a configured profile to the whole batch. Individual **Print** buttons also open a preview with this override. It replaces the full profile—including paper and borderless settings—for that run only; TOML assignments stay unchanged. The preview can toggle grouping and overrides before submission.
 

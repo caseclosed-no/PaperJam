@@ -91,6 +91,9 @@ pub fn compile_jobs(
         );
     }
     let mut jobs: Vec<PrintJob> = Vec::new();
+    // Grouping key per job: (episode index, set, profile). Unused parts stay
+    // at a constant so they never split a group.
+    let mut keys: Vec<(usize, Option<u32>, String)> = Vec::new();
     for item in &plan.items {
         let profile = printer
             .profiles
@@ -127,17 +130,32 @@ pub fn compile_jobs(
             elements: vec![item.element_name.clone()],
         };
         if plan.group_by_profile {
-            let index = match jobs.iter().position(|job| job.profile_id == item.profile) {
+            let key = (
+                if plan.group_by_episode {
+                    item.episode_index
+                } else {
+                    0
+                },
+                if plan.group_per_set { item.set } else { None },
+                item.profile.clone(),
+            );
+            let index = match keys.iter().position(|k| *k == key) {
                 Some(index) => index,
                 None => {
                     let mut grouped = candidate;
-                    grouped.title = format!(
-                        "{} / {} / {}",
-                        plan.game_name, plan.document_name, profile.name
-                    );
-                    grouped.set = None;
+                    let mut title = vec![plan.game_name.clone(), plan.document_name.clone()];
+                    if plan.group_by_episode {
+                        title.push(item.episode_name.clone());
+                    }
+                    if let Some(set) = key.1 {
+                        title.push(format!("set {set}"));
+                    }
+                    title.push(profile.name.clone());
+                    grouped.title = title.join(" / ");
+                    grouped.set = key.1;
                     grouped.copies = 1;
                     grouped.elements.clear();
+                    keys.push(key);
                     jobs.push(grouped);
                     jobs.len() - 1
                 }
@@ -162,6 +180,14 @@ pub fn compile_jobs(
             continue;
         }
         jobs.push(candidate);
+    }
+    if plan.group_by_profile {
+        // Episodes in game order, then sets; within one group the profiles
+        // keep their first-appearance order, so the intro letter's profile
+        // (the first page of an episode) prints first.
+        let mut ordered: Vec<_> = keys.into_iter().zip(jobs).collect();
+        ordered.sort_by_key(|((episode, set, _), _)| (*episode, *set));
+        jobs = ordered.into_iter().map(|(_, job)| job).collect();
     }
     Ok(jobs)
 }
@@ -689,6 +715,163 @@ mod tests {
                     .contains("unknown profile")
             );
         }
+    }
+
+    /// Ep1: intro p1 (high), evidence p2+p3 (standard).
+    /// Ep2: intro p4 (high), evidence p5 (standard). Three target games.
+    fn episode_fixture() -> (Fixture, crate::model::ProductionPlanRequest) {
+        let mut f = fixture(1);
+        f.game.episodes = vec![
+            crate::model::Episode {
+                id: "ep1".into(),
+                name: "Ep1".into(),
+            },
+            crate::model::Episode {
+                id: "ep2".into(),
+                name: "Ep2".into(),
+            },
+        ];
+        let template = f.game.documents[0].elements[0].clone();
+        f.game.documents[0].elements = (1..=5)
+            .map(|page| {
+                let mut element = template.clone();
+                element.id = format!("page-{page}");
+                element.name = element.id.clone();
+                element.page = page;
+                element.episode = if page <= 3 { "ep1" } else { "ep2" }.into();
+                element.profile = matches!(page, 1 | 4).then(|| "high".into());
+                element
+            })
+            .collect();
+        let mut req = production_request();
+        req.selected_element_ids = f.game.documents[0]
+            .elements
+            .iter()
+            .map(|e| e.id.clone())
+            .collect();
+        req.inventory_mode = crate::model::InventoryMode::IgnoreInventory;
+        (f, req)
+    }
+    fn job_summary(jobs: &[PrintJob]) -> Vec<(String, Option<u32>, Vec<u32>)> {
+        jobs.iter()
+            .map(|j| (j.profile_id.clone(), j.set, j.source_pages.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn grouping_modes_by_episode_and_per_set() {
+        use crate::{model::InventoryFile, planner};
+        let (f, mut req) = episode_fixture();
+        let doc = &f.game.documents[0];
+        let inv = InventoryFile::default();
+        let jobs_for = |req: &crate::model::ProductionPlanRequest| {
+            let plan = planner::production_plan(&f.game, doc, &inv, req).unwrap();
+            compile_jobs(doc, &plan, &f.printer, &f.root).unwrap()
+        };
+        let h = || "high".to_string();
+        let s = || "standard".to_string();
+
+        // Whole run, per profile.
+        let jobs = jobs_for(&req);
+        assert_eq!(
+            job_summary(&jobs),
+            vec![
+                (h(), None, vec![1, 4, 1, 4, 1, 4]),
+                (s(), None, vec![2, 3, 5, 2, 3, 5, 2, 3, 5]),
+            ]
+        );
+
+        // Per game, whole document.
+        req.group_per_set = true;
+        let jobs = jobs_for(&req);
+        assert_eq!(jobs.len(), 6);
+        assert_eq!(
+            job_summary(&jobs[..2]),
+            vec![(h(), Some(1), vec![1, 4]), (s(), Some(1), vec![2, 3, 5])]
+        );
+        assert_eq!(jobs[1].title, "Test / Pages / set 1 / Standard");
+
+        // Per episode, all games together.
+        req.group_per_set = false;
+        req.group_by_episode = true;
+        let jobs = jobs_for(&req);
+        assert_eq!(
+            job_summary(&jobs),
+            vec![
+                (h(), None, vec![1, 1, 1]),
+                (s(), None, vec![2, 3, 2, 3, 2, 3]),
+                (h(), None, vec![4, 4, 4]),
+                (s(), None, vec![5, 5, 5]),
+            ]
+        );
+        assert_eq!(jobs[2].title, "Test / Pages / Ep2 / High");
+
+        // Per episode and per game: episode -> game -> profile, pre-sorted.
+        req.group_per_set = true;
+        let jobs = jobs_for(&req);
+        assert_eq!(jobs.len(), 12);
+        let expected: Vec<_> = [(1u32, vec![2, 3]), (4, vec![5])]
+            .into_iter()
+            .flat_map(|(intro, rest)| {
+                (1..=3).flat_map(move |set| {
+                    [
+                        (h(), Some(set), vec![intro]),
+                        (s(), Some(set), rest.clone()),
+                    ]
+                })
+            })
+            .collect();
+        assert_eq!(job_summary(&jobs), expected);
+        assert_eq!(jobs[2].title, "Test / Pages / Ep1 / set 2 / High");
+
+        // Sub-options are ignored without profile grouping.
+        req.group_by_profile = false;
+        let plan = planner::production_plan(&f.game, doc, &inv, &req).unwrap();
+        assert!(!plan.group_by_episode && !plan.group_per_set);
+        assert!(
+            compile_jobs(doc, &plan, &f.printer, &f.root)
+                .unwrap()
+                .iter()
+                .all(|j| j.source_pages.is_empty())
+        );
+    }
+
+    #[test]
+    fn manual_plans_group_by_episode_and_old_plans_still_load() {
+        use crate::{model::*, planner};
+        let (f, _) = episode_fixture();
+        let doc = &f.game.documents[0];
+        let req: ManualPlanRequest = serde_json::from_value(serde_json::json!({
+            "game_id":"test","document_id":"pages","group_by_profile":true,
+            "group_by_episode":true,"group_per_set":true,
+            "selections":[{"element_id":"page-5","quantity":2},{"element_id":"page-1","quantity":1},
+                          {"element_id":"page-2","quantity":1}]
+        }))
+        .unwrap();
+        let plan = planner::manual_plan(&f.game, doc, &InventoryFile::default(), &req).unwrap();
+        let jobs = compile_jobs(doc, &plan, &f.printer, &f.root).unwrap();
+        assert_eq!(
+            job_summary(&jobs),
+            vec![
+                ("high".into(), None, vec![1]),
+                ("standard".into(), None, vec![2]),
+                ("standard".into(), None, vec![5, 5]),
+            ]
+        );
+        // A plan saved before episode grouping existed.
+        let mut old = serde_json::to_value(&plan).unwrap();
+        let object = old.as_object_mut().unwrap();
+        object.remove("group_by_episode");
+        object.remove("group_per_set");
+        for item in object["items"].as_array_mut().unwrap() {
+            let item = item.as_object_mut().unwrap();
+            item.remove("episode_name");
+            item.remove("episode_index");
+        }
+        let old: PrintPlan = serde_json::from_value(old).unwrap();
+        assert!(old.group_by_profile && !old.group_by_episode && !old.group_per_set);
+        let jobs = compile_jobs(doc, &old, &f.printer, &f.root).unwrap();
+        assert_eq!(jobs.len(), 2);
     }
 
     #[test]

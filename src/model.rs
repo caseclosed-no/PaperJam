@@ -136,6 +136,12 @@ pub struct ProductionPlanRequest {
     pub inventory_mode: InventoryMode,
     #[serde(default)]
     pub group_by_profile: bool,
+    /// With profile grouping: group separately within each episode.
+    #[serde(default)]
+    pub group_by_episode: bool,
+    /// With profile grouping: group separately within each target set.
+    #[serde(default)]
+    pub group_per_set: bool,
     #[serde(default)]
     pub profile_override: Option<String>,
     #[serde(default)]
@@ -149,6 +155,12 @@ pub struct ManualPlanRequest {
     pub selections: Vec<ManualSelection>,
     #[serde(default)]
     pub group_by_profile: bool,
+    /// With profile grouping: group separately within each episode.
+    #[serde(default)]
+    pub group_by_episode: bool,
+    /// With profile grouping: group separately within each target set.
+    #[serde(default)]
+    pub group_per_set: bool,
     #[serde(default)]
     pub profile_override: Option<String>,
     #[serde(default)]
@@ -186,6 +198,12 @@ pub struct PrintPlan {
     pub items: Vec<PlanItem>,
     #[serde(default)]
     pub group_by_profile: bool,
+    /// With profile grouping: group separately within each episode.
+    #[serde(default)]
+    pub group_by_episode: bool,
+    /// With profile grouping: group separately within each target set.
+    #[serde(default)]
+    pub group_per_set: bool,
     #[serde(default)]
     pub profile_override: Option<String>,
     #[serde(default)]
@@ -234,6 +252,11 @@ pub struct PlanItem {
     pub set: Option<u32>,
     pub element_id: String,
     pub element_name: String,
+    #[serde(default)]
+    pub episode_name: String,
+    /// Position of the element's episode in the game's episode list.
+    #[serde(default)]
+    pub episode_index: usize,
     pub page: u32,
     pub profile: String,
     pub quantity: u32,
